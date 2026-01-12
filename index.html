@@ -1,0 +1,489 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>数字あてゲーム</title>
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; margin: 0; padding: 16px; }
+    .wrap { max-width: 980px; margin: 0 auto; }
+    h1 { font-size: 20px; margin: 8px 0 12px; }
+    .status { font-size: 16px; margin: 8px 0 12px; min-height: 24px; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+    @media (max-width: 700px) {
+      .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    }
+
+    button.card {
+      font-size: 44px;
+      padding: 22px 0;
+      border-radius: 18px;
+      border: 2px solid #ddd;
+      background: #fff;
+      touch-action: manipulation;
+      user-select: none;
+    }
+    button.card:active { transform: scale(0.98); }
+    button.card:disabled { opacity: 0.35; }
+
+    .ok { outline: 5px solid #7bd67b; }
+    .ng { outline: 5px solid #ff8a8a; }
+
+    .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 12px 0; }
+    .row button { font-size: 16px; padding: 10px 12px; border-radius: 12px; border: 1px solid #ddd; background: #f7f7f7; }
+    .row label { display: flex; gap: 6px; align-items: center; font-size: 16px; }
+    .row input {
+      width: 90px;
+      font-size: 16px;
+      padding: 8px 10px;
+      border-radius: 12px;
+      border: 1px solid #ddd;
+    }
+    .pill {
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid #eee;
+      background: #fafafa;
+      font-size: 14px;
+      white-space: nowrap;
+    }
+
+    /* --- 正解アニメ（ポン＋キラ） --- */
+    .card.pop {
+      animation: pop 180ms ease-out, glow 260ms ease-out;
+    }
+    @keyframes pop {
+      0%   { transform: scale(1); }
+      60%  { transform: scale(1.08); }
+      100% { transform: scale(1); }
+    }
+    @keyframes glow {
+      0%   { box-shadow: 0 0 0 rgba(123,214,123,0); }
+      100% { box-shadow: 0 0 24px rgba(123,214,123,0.55); }
+    }
+
+    /* --- クリア時の紙吹雪 --- */
+    #confettiLayer {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      overflow: hidden;
+      z-index: 9999;
+    }
+    .confetti {
+      position: absolute;
+      top: -12px;
+      width: 10px;
+      height: 14px;
+      border-radius: 3px;
+      opacity: 0.9;
+      animation: fall 900ms linear forwards;
+    }
+    @keyframes fall {
+      0%   { transform: translateY(0) rotate(0deg); }
+      100% { transform: translateY(110vh) rotate(260deg); }
+    }
+
+    /* --- 大正解ユニコーン（オーバーレイ） --- */
+    #unicornOverlay {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 10000;
+      pointer-events: none;
+    }
+    #unicornOverlay.show {
+      display: flex;
+      animation: overlayFade 1200ms ease-out forwards;
+    }
+    @keyframes overlayFade {
+      0%   { opacity: 0; }
+      12%  { opacity: 1; }
+      85%  { opacity: 1; }
+      100% { opacity: 0; }
+    }
+    .unicornCard {
+      width: min(520px, 90vw);
+      border-radius: 24px;
+      background: rgba(255, 255, 255, 0.92);
+      border: 1px solid rgba(0,0,0,0.06);
+      box-shadow: 0 20px 60px rgba(0,0,0,0.18);
+      padding: 18px 16px 14px;
+      text-align: center;
+      transform: translateY(14px) scale(0.96);
+      animation: unicornPop 900ms ease-out forwards;
+    }
+    @keyframes unicornPop {
+      0%   { transform: translateY(14px) scale(0.96); }
+      40%  { transform: translateY(0px) scale(1.02); }
+      100% { transform: translateY(0px) scale(1); }
+    }
+    .unicornTitle {
+      font-size: 22px;
+      margin: 0 0 6px;
+    }
+    .unicornNote {
+      font-size: 14px;
+      margin: 6px 0 0;
+      opacity: 0.75;
+    }
+    .unicornSvg {
+      width: 100%;
+      height: auto;
+      max-height: 42vh;
+      display: block;
+      margin: 6px auto 0;
+    }
+
+    /* --- ☆彡 フロート演出（大正解時だけ） --- */
+    #sparkleLayer {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      overflow: hidden;
+      z-index: 10001;
+    }
+    .sparkle {
+      position: absolute;
+      left: 50%;
+      top: 62%;
+      transform: translate(-50%, 0) scale(0.9);
+      font-size: 56px;
+      font-weight: 700;
+      opacity: 0;
+      animation: sparkleFloat 1100ms ease-out forwards;
+      text-shadow: 0 10px 30px rgba(0,0,0,0.18);
+      user-select: none;
+      white-space: nowrap;
+    }
+    @keyframes sparkleFloat {
+      0%   { opacity: 0; transform: translate(-50%, 20px) scale(0.9) rotate(-6deg); }
+      15%  { opacity: 1; transform: translate(-50%, 0px) scale(1.03) rotate(0deg); }
+      70%  { opacity: 1; transform: translate(-50%, -90px) scale(1.06) rotate(4deg); }
+      100% { opacity: 0; transform: translate(-50%, -140px) scale(1.02) rotate(8deg); }
+    }
+    @media (max-width: 700px) {
+      .sparkle { font-size: 48px; top: 66%; }
+    }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>小さい順にタップしよう（7こ）</h1>
+
+  <div class="row">
+    <button id="startBtn">スタート</button>
+
+    <label>最小
+      <input id="minInput" type="number" inputmode="numeric" value="1" />
+    </label>
+
+    <label>最大
+      <input id="maxInput" type="number" inputmode="numeric" value="20" />
+    </label>
+
+    <div class="pill" id="pickedInfo">7こ抽選します</div>
+
+    <!-- スコア表示：重複を解消して “ここだけ” に統一 -->
+    <div class="pill" id="scoreNormalTop">★ 0</div>
+    <div class="pill" id="scorePerfectTop">☆彡 0</div>
+  </div>
+
+  <div class="status" id="status">スタートを押してね</div>
+  <div class="grid" id="grid"></div>
+</div>
+
+<!-- 紙吹雪レイヤー -->
+<div id="confettiLayer"></div>
+
+<!-- ☆彡 フロートレイヤー -->
+<div id="sparkleLayer"></div>
+
+<!-- 大正解ユニコーン -->
+<div id="unicornOverlay" aria-hidden="true">
+  <div class="unicornCard">
+    <div class="unicornTitle">大正解！！</div>
+
+    <!-- ユニコーン（SVG） -->
+    <svg class="unicornSvg" viewBox="0 0 800 420" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="unicorn">
+      <g opacity="0.9">
+        <circle cx="110" cy="90" r="10" fill="#ffd93d"/>
+        <circle cx="160" cy="60" r="6" fill="#6bcBef"/>
+        <circle cx="690" cy="80" r="9" fill="#ff6b6b"/>
+        <circle cx="650" cy="130" r="6" fill="#b28dff"/>
+        <circle cx="700" cy="170" r="7" fill="#6bdb8a"/>
+      </g>
+
+      <path d="M575 255c45 18 78 10 102-16-18 46-58 78-118 66-16-3-20-14-14-27 7-16 15-21 30-23z"
+            fill="#b28dff" opacity="0.85"/>
+
+      <path d="M210 270c10-70 70-120 160-120h170c60 0 110 40 110 90 0 55-55 100-125 100H305c-60 0-105-30-95-70z"
+            fill="#ffffff" stroke="#e6e6e6" stroke-width="6" />
+
+      <g fill="#ffffff" stroke="#e6e6e6" stroke-width="6">
+        <path d="M290 330v55c0 16-12 28-28 28h-12c-6 0-10-4-10-10v-14c0-6 4-10 10-10h12c6 0 10-4 10-10v-39z"/>
+        <path d="M390 330v55c0 16-12 28-28 28h-12c-6 0-10-4-10-10v-14c0-6 4-10 10-10h12c6 0 10-4 10-10v-39z"/>
+        <path d="M520 330v55c0 16-12 28-28 28h-12c-6 0-10-4-10-10v-14c0-6 4-10 10-10h12c6 0 10-4 10-10v-39z"/>
+      </g>
+
+      <g fill="#ffd93d">
+        <rect x="238" y="390" width="48" height="18" rx="8"/>
+        <rect x="338" y="390" width="48" height="18" rx="8"/>
+        <rect x="468" y="390" width="48" height="18" rx="8"/>
+      </g>
+
+      <path d="M265 210c-28-20-40-56-24-88 18-36 68-46 108-18 24 16 40 44 36 74-4 28-22 50-45 58-18 6-52 2-75-26z"
+            fill="#ffffff" stroke="#e6e6e6" stroke-width="6"/>
+
+      <circle cx="320" cy="195" r="12" fill="#ffb3c7" opacity="0.8"/>
+
+      <circle cx="330" cy="160" r="10" fill="#333"/>
+      <circle cx="334" cy="156" r="3" fill="#fff"/>
+
+      <path d="M292 120c-10-26 12-44 34-40 10 2 18 8 22 18-18 8-38 16-56 22z"
+            fill="#ffffff" stroke="#e6e6e6" stroke-width="6"/>
+
+      <path d="M250 235c-28-20-45-48-42-80 6-56 62-96 118-84-44 10-64 42-48 76 18 38 12 64-28 88z"
+            fill="#6bcBef" opacity="0.85"/>
+      <path d="M255 240c30-8 56-22 78-44-4 28-18 52-40 70-18 14-34 10-44-4-10-14-8-18 6-22z"
+            fill="#6bdb8a" opacity="0.85"/>
+      <path d="M260 248c30 2 58-4 86-20-10 28-30 50-58 64-20 10-34 2-40-12-6-14-2-20 12-32z"
+            fill="#ff6b6b" opacity="0.85"/>
+
+      <path d="M350 78l28 64-40-34z" fill="#ffd93d" stroke="#f2c600" stroke-width="6" stroke-linejoin="round"/>
+
+      <g opacity="0.85">
+        <path d="M560 110l8 16 18 2-14 12 4 18-16-9-16 9 4-18-14-12 18-2z" fill="#ffd93d"/>
+        <path d="M630 210l6 12 14 2-10 9 3 14-13-7-13 7 3-14-10-9 14-2z" fill="#b28dff"/>
+      </g>
+    </svg>
+
+    <div class="unicornNote">ノーミスでクリア！</div>
+  </div>
+</div>
+
+<script>
+  const grid = document.getElementById('grid');
+  const statusEl = document.getElementById('status');
+  const startBtn = document.getElementById('startBtn');
+  const minInput = document.getElementById('minInput');
+  const maxInput = document.getElementById('maxInput');
+  const pickedInfo = document.getElementById('pickedInfo');
+
+  const confettiLayer = document.getElementById('confettiLayer');
+  const sparkleLayer = document.getElementById('sparkleLayer');
+  const unicornOverlay = document.getElementById('unicornOverlay');
+
+  // スコア表示（上部のみ）
+  const scoreNormalTop = document.getElementById('scoreNormalTop');
+  const scorePerfectTop = document.getElementById('scorePerfectTop');
+
+  const PICK_COUNT = 7;
+
+  let picked = [];
+  let targetOrder = [];
+  let nextIndex = 0;
+
+  // 大正解（ノーミス）判定
+  let perfectRound = true;
+
+  // スコア
+  let normalScore = 0;   // ★
+  let perfectScore = 0;  // ☆彡
+
+  function shuffle(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  }
+
+  function parseRange() {
+    const min = Number(minInput.value);
+    const max = Number(maxInput.value);
+    return { min, max };
+  }
+
+  function validateRange(min, max) {
+    if (!Number.isFinite(min) || !Number.isFinite(max)) return "最小・最大は数字で入れてね";
+    if (!Number.isInteger(min) || !Number.isInteger(max)) return "最小・最大は整数にしてね";
+    if (min > max) return "最小が最大より大きいよ";
+    const size = (max - min + 1);
+    if (size < PICK_COUNT) return `この範囲だと${PICK_COUNT}こ取れないよ（今は${size}こぶん）`;
+    return null;
+  }
+
+  function pickUnique(min, max, count) {
+    const set = new Set();
+    while (set.size < count) {
+      const n = Math.floor(Math.random() * (max - min + 1)) + min;
+      set.add(n);
+    }
+    return Array.from(set);
+  }
+
+  function updateScoreUI() {
+    scoreNormalTop.textContent = `★ ${normalScore}`;
+    scorePerfectTop.textContent = `☆彡 ${perfectScore}`;
+  }
+
+  function renderButtons() {
+    grid.innerHTML = '';
+    picked.forEach(n => {
+      const btn = document.createElement('button');
+      btn.className = 'card';
+      btn.textContent = n;
+      btn.addEventListener('click', () => onTap(btn, n));
+      grid.appendChild(btn);
+    });
+  }
+
+  function setStatusNext() {
+    const next = targetOrder[nextIndex];
+    statusEl.textContent = `つぎは「${next}」をタップ！`;
+  }
+
+  function playConfetti(count) {
+    confettiLayer.innerHTML = '';
+    const w = window.innerWidth;
+
+    for (let i = 0; i < count; i++) {
+      const piece = document.createElement('div');
+      piece.className = 'confetti';
+
+      piece.style.left = Math.floor(Math.random() * w) + 'px';
+
+      const colors = ['#ff6b6b', '#ffd93d', '#6bcBef', '#6bdb8a', '#b28dff'];
+      piece.style.background = colors[Math.floor(Math.random() * colors.length)];
+
+      piece.style.animationDuration = (700 + Math.random() * 500).toFixed(0) + 'ms';
+
+      confettiLayer.appendChild(piece);
+    }
+
+    setTimeout(() => {
+      confettiLayer.innerHTML = '';
+    }, 1500);
+  }
+
+  function showUnicorn() {
+    unicornOverlay.classList.remove('show');
+    void unicornOverlay.offsetWidth; // reflow
+    unicornOverlay.classList.add('show');
+
+    setTimeout(() => {
+      unicornOverlay.classList.remove('show');
+    }, 1300);
+  }
+
+  function showSparkleOnce() {
+    const el = document.createElement('div');
+    el.className = 'sparkle';
+    el.textContent = '☆彡';
+    sparkleLayer.appendChild(el);
+
+    setTimeout(() => {
+      el.remove();
+    }, 1200);
+  }
+
+  function showSparkleTwice() {
+    // 1回目（すぐ）
+    showSparkleOnce();
+    // 2回目（200ms後）
+    setTimeout(showSparkleOnce, 200);
+  }
+
+  function onTap(btn, n) {
+    const expected = targetOrder[nextIndex];
+
+    if (n === expected) {
+      btn.disabled = true;
+      btn.classList.add('ok');
+
+      // 正解演出：ポン＋キラ
+      btn.classList.add('pop');
+      setTimeout(() => btn.classList.remove('pop'), 220);
+
+      nextIndex += 1;
+
+      if (nextIndex >= targetOrder.length) {
+        const normalCount = 36; // 通常
+        const bigCount = 140;   // 大量（大正解）
+
+        if (perfectRound) {
+          perfectScore += 1;
+          updateScoreUI();
+
+          playConfetti(bigCount);
+          showUnicorn();
+          showSparkleTwice();
+          statusEl.textContent = '大正解！！ ☆彡 がふえたよ';
+        } else {
+          normalScore += 1;
+          updateScoreUI();
+
+          playConfetti(normalCount);
+          statusEl.textContent = '正解！ ★ がふえたよ';
+        }
+      } else {
+        setStatusNext();
+      }
+      return;
+    }
+
+    // 不正解：大正解フラグOFF
+    perfectRound = false;
+
+    // 不正解演出：叱らない（軽くヒント）
+    btn.classList.add('ng');
+    setTimeout(() => btn.classList.remove('ng'), 250);
+    statusEl.textContent = `いまは「${expected}」だよ`;
+  }
+
+  function start() {
+    const { min, max } = parseRange();
+    const err = validateRange(min, max);
+
+    if (err) {
+      grid.innerHTML = '';
+      pickedInfo.textContent = `範囲：${min}〜${max}`;
+      statusEl.textContent = err;
+      return;
+    }
+
+    const uniq = pickUnique(min, max, PICK_COUNT);
+    targetOrder = [...uniq].sort((a, b) => a - b);
+    picked = shuffle([...uniq]);
+    nextIndex = 0;
+
+    // ラウンド開始：大正解（ノーミス）フラグをリセット
+    perfectRound = true;
+
+    pickedInfo.textContent = `範囲：${min}〜${max}（${PICK_COUNT}こ抽選）`;
+    renderButtons();
+    setStatusNext();
+  }
+
+  function onRangeChange() {
+    const { min, max } = parseRange();
+    pickedInfo.textContent = `範囲：${min}〜${max}`;
+  }
+
+  minInput.addEventListener('input', onRangeChange);
+  maxInput.addEventListener('input', onRangeChange);
+  startBtn.addEventListener('click', start);
+
+  // 初期表示
+  updateScoreUI();
+</script>
+</body>
+</html>
