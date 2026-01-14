@@ -191,7 +191,7 @@
 
     <div class="pill" id="pickedInfo">7こ抽選します</div>
 
-    <!-- スコア表示：重複を解消して “ここだけ” に統一 -->
+    <!-- スコア表示：ここだけ -->
     <div class="pill" id="scoreNormalTop">★ 0</div>
     <div class="pill" id="scorePerfectTop">☆彡 0</div>
   </div>
@@ -298,6 +298,53 @@
   let normalScore = 0;   // ★
   let perfectScore = 0;  // ☆彡
 
+  // ====== Sound (Web Audio) ======
+  let audioCtx = null;
+
+  function ensureAudio() {
+    if (!audioCtx) {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      audioCtx = new Ctx();
+    }
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+  }
+
+  function beep({ freq = 440, durationMs = 120, type = 'sine', volume = 0.18 }) {
+    if (!audioCtx) return;
+
+    const t0 = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, t0);
+
+    // エンベロープ
+    gain.gain.setValueAtTime(0.0001, t0);
+    gain.gain.exponentialRampToValueAtTime(volume, t0 + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + durationMs / 1000);
+
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    osc.start(t0);
+    osc.stop(t0 + durationMs / 1000 + 0.02);
+  }
+
+  // 正解：明るい2音
+  function playOkSound() {
+    beep({ freq: 660, durationMs: 90, type: 'triangle', volume: 0.16 });
+    setTimeout(() => beep({ freq: 880, durationMs: 110, type: 'triangle', volume: 0.16 }), 90);
+  }
+
+  // 不正解：低めの「ブッ」
+  function playNgSound() {
+    beep({ freq: 180, durationMs: 140, type: 'sawtooth', volume: 0.10 });
+  }
+  // ====== /Sound ======
+
   function shuffle(arr) {
     for (let i = arr.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
@@ -396,16 +443,19 @@
   }
 
   function showSparkleTwice() {
-    // 1回目（すぐ）
     showSparkleOnce();
-    // 2回目（200ms後）
     setTimeout(showSparkleOnce, 200);
   }
 
   function onTap(btn, n) {
+    // iOS対策：タップ時もresumeを試す（Start押し忘れ等の保険）
+    ensureAudio();
+
     const expected = targetOrder[nextIndex];
 
     if (n === expected) {
+      playOkSound();
+
       btn.disabled = true;
       btn.classList.add('ok');
 
@@ -440,7 +490,8 @@
       return;
     }
 
-    // 不正解：大正解フラグOFF
+    // 不正解
+    playNgSound();
     perfectRound = false;
 
     // 不正解演出：叱らない（軽くヒント）
@@ -450,6 +501,9 @@
   }
 
   function start() {
+    // Start押下で音をアンロック（iOS対策の本命）
+    ensureAudio();
+
     const { min, max } = parseRange();
     const err = validateRange(min, max);
 
